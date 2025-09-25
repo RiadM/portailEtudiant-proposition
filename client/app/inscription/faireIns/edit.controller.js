@@ -78,10 +78,14 @@
 
 'use strict';
 
-angular.module('pelApp').controller('EditCtrl', function($scope, $route, $http, $filter, $element, obtenirGroupeCours) {
+angular.module('pelApp').controller('EditCtrl', function($scope, $route, $http, $filter, $element, $q, obtenirGroupeCours) {
 
    var that = this;
    var longMinSigle = 4;
+
+   // Variables pour débounce manuel (compatible Angular 1.2.x)
+   var debounceTimeout = null;
+   var debounceDelay = 300; // 300ms de délai
 
    // Auto-complétion. On cache la dernière requête au serveur.
    var dernierTrimestre = null,
@@ -444,38 +448,55 @@ angular.module('pelApp').controller('EditCtrl', function($scope, $route, $http, 
          return [];
       }
 
-      // Temps d'exécution de la requête http
-      var avantAppelAuServeur = moment();
+      // Implémentation manuelle du debounce pour compatibilité Angular 1.2.x
+      var deferred = $q.defer();
 
-      // /apis/autocompletion/:identifiant/:trimestre/:siglePartiel
-      return $http.get('/apis/autocompletion/identifiant/' + $scope.trimestreCourant.an_ses_num + '/' + pSiglePartiel)
-         .then(function(reponse) {
+      // Annuler le timeout précédent s'il existe
+      if (debounceTimeout) {
+         clearTimeout(debounceTimeout);
+      }
 
-            if (reponse.data && reponse.data.status === 'success') {
+      // Créer un nouveau timeout
+      debounceTimeout = setTimeout(function() {
+         // Temps d'exécution de la requête http
+         var avantAppelAuServeur = moment();
 
-               //console.log(' Appel au serveur --> ' + moment.duration(moment().diff(avantAppelAuServeur)).milliseconds() + ' millisecondes');
+         // /apis/autocompletion/:identifiant/:trimestre/:siglePartiel
+         $http.get('/apis/autocompletion/identifiant/' + $scope.trimestreCourant.an_ses_num + '/' + pSiglePartiel)
+            .then(function(reponse) {
 
-               // Si le retour nous indique 'TropDeCours' ou 'PremierAppel', on claire le cache et on retourne un tableau vide
-               if (reponse.data.data.listeSigle.statut === 'TropDeCours' ||
-                  reponse.data.data.listeSigle.statut === 'PremierAppel') {
-                  dernierTrimestre = null;
-                  dernierSiglePartiel = null;
-                  dernierResultat = null;
-                  return [];
+               if (reponse.data && reponse.data.status === 'success') {
+
+                  //console.log(' Appel au serveur --> ' + moment.duration(moment().diff(avantAppelAuServeur)).milliseconds() + ' millisecondes');
+
+                  // Si le retour nous indique 'TropDeCours' ou 'PremierAppel', on claire le cache et on retourne un tableau vide
+                  if (reponse.data.data.listeSigle.statut === 'TropDeCours' ||
+                     reponse.data.data.listeSigle.statut === 'PremierAppel') {
+                     dernierTrimestre = null;
+                     dernierSiglePartiel = null;
+                     dernierResultat = null;
+                     deferred.resolve([]);
+                     return;
+                  }
+
+                  // On conserve le cache sur le client, au cas où l'on demande les mêmes premiers caractères du sigle partiel
+                  dernierTrimestre = $scope.trimestreCourant.an_ses_num;
+                  dernierSiglePartiel = pSiglePartiel;
+                  dernierResultat = reponse.data.data.listeSigle;
+
+                  deferred.resolve(reponse.data.data.listeSigle.tabCours);
+               } else {
+                  //  On ne provoque pas d'erreur, car le service d'autoCompletion n'est pas essentiel
+                  //  $scope.err = 'Attention une erreur est survenue, veuillez essayer plus tard:';
+                  deferred.resolve([]);
                }
+            })
+            .catch(function() {
+               deferred.resolve([]);
+            });
+      }, debounceDelay);
 
-               // On conserve le cache sur le client, au cas où l'on demande les mêmes premiers caractères du sigle partiel
-               dernierTrimestre = $scope.trimestreCourant.an_ses_num;
-               dernierSiglePartiel = pSiglePartiel;
-               dernierResultat = reponse.data.data.listeSigle;
-
-               return reponse.data.data.listeSigle.tabCours;
-            } else {
-               //  On ne provoque pas d'erreur, car le service d'autoCompletion n'est pas essentiel
-               //  $scope.err = 'Attention une erreur est survenue, veuillez essayer plus tard:';
-               return [];
-            }
-         });
+      return deferred.promise;
 
    };
    // ==================================================================================================================
