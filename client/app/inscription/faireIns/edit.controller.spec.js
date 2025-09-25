@@ -700,13 +700,14 @@ describe('Controller: EditCtrl', function() {
    // /* Initialiser le contrôleur avec httpBackend et rootScope
    //  * et ressoudre les dépendances aux autorisations (backendMock) et Auth (authMock).
    //  */
-   beforeEach(inject(function(_$httpBackend_, $rootScope, $controller, _$timeout_) {
+   beforeEach(inject(function(_$httpBackend_, $rootScope, $controller, _$timeout_, $q) {
       scope = $rootScope.$new();
       backendMock = _$httpBackend_;
       $timeout = _$timeout_;
       editCtrl = $controller('EditCtrl', {
          $scope: scope,
-         $element:elem
+         $element:elem,
+         $q: $q
       });
       backendMock.when('GET','app/main/main.html').respond({'status':'err'});
       scope.cours = {'groupe':'40'};
